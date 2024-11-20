@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
-
 project(rknn_zipformer_demo)
+
+add_compile_definitions(SHERPA_ONNX_ENABLE_ALSA)
 
 if (ENABLE_ASAN)
 	message(STATUS "BUILD WITH ADDRESS SANITIZER")
@@ -24,14 +25,18 @@ file(GLOB SRCS ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 add_executable(${PROJECT_NAME}
     main.cc
     process.cc
+    wave-reader.cc
+    alsa/alsa.cc
+    alsa/resample.cc
     ${rknpu_zipformer_file}
 )
 
 target_link_libraries(${PROJECT_NAME}
     fileutils
-    audioutils
+    # audioutils
     ${LIBRKNNRT}
     ${LIBKALDI_NATIVE_FBANK}
+    asound
 )
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")

@@ -20,9 +20,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include "zipformer.h"
-#include "audio_utils.h"
+// #include "audio_utils.h"
 #include <iostream>
 #include <vector>
+#include "wave-reader.h"
+#include "alsa/alsa-play.h"
+#include "alsa/alsa.h"
+#include "alsa/resample.h"
+
 #include <string>
 #include "process.h"
 #include <iomanip>
@@ -36,13 +41,15 @@ int main(int argc, char **argv)
     if (argc != 5)
     {
         printf("%s <encoder_path> <decoder_path> <joiner_path> <audio_path>\n", argv[0]);
-        return -1;
+        // return -1;
     }
 
     const char *encoder_path = argv[1];
     const char *decoder_path = argv[2];
     const char *joiner_path = argv[3];
     const char *audio_path = argv[4];
+
+    const char *device_name = argv[5];
 
     int ret;
     TIMER timer;
@@ -61,31 +68,37 @@ int main(int argc, char **argv)
     memset(vocab, 0, sizeof(vocab));
     memset(&audio, 0, sizeof(audio_buffer_t));
 
+    bool isOk;
+    auto samples = sherpa_onnx::ReadWave(std::string(audio_path), &audio.sample_rate, &isOk);
+    audio.data = samples.data();
+    audio.num_channels = 1;
+    audio.num_frames = samples.size();
+
     timer.tik();
-    ret = read_audio(audio_path, &audio);
+    // ret = read_audio(audio_path, &audio);
     if (ret != 0)
     {
         printf("read audio fail! ret=%d audio_path=%s\n", ret, audio_path);
-        goto out;
+        // goto out;
     }
 
     if (audio.num_channels == 2)
     {
-        ret = convert_channels(&audio);
+        // ret = convert_channels(&audio);
         if (ret != 0)
         {
             printf("convert channels fail! ret=%d\n", ret, audio_path);
-            goto out;
+            // goto out;
         }
     }
 
     if (audio.sample_rate != SAMPLE_RATE)
     {
-        ret = resample_audio(&audio, audio.sample_rate, SAMPLE_RATE);
+        // ret = resample_audio(&audio, audio.sample_rate, SAMPLE_RATE);
         if (ret != 0)
         {
             printf("resample audio fail! ret=%d\n", ret, audio_path);
-            goto out;
+            // goto out;
         }
     }
 
@@ -93,7 +106,7 @@ int main(int argc, char **argv)
     if (ret != 0)
     {
         printf("read vocab fail! ret=%d vocab_path=%s\n", ret, VOCAB_PATH);
-        goto out;
+        // goto out;
     }
     timer.tok();
     timer.print_time("read_audio & convert_channels & resample_audio & read_vocab");
@@ -103,7 +116,7 @@ int main(int argc, char **argv)
     if (ret != 0)
     {
         printf("init_zipformer_model fail! ret=%d encoder_path=%s\n", ret, encoder_path);
-        goto out;
+        // goto out;
     }
     build_input_output(&rknn_app_ctx.encoder_context);
     timer.tok();
@@ -114,7 +127,7 @@ int main(int argc, char **argv)
     if (ret != 0)
     {
         printf("init_zipformer_model fail! ret=%d decoder_path=%s\n", ret, decoder_path);
-        goto out;
+        // goto out;
     }
     build_input_output(&rknn_app_ctx.decoder_context);
     timer.tok();
@@ -125,18 +138,19 @@ int main(int argc, char **argv)
     if (ret != 0)
     {
         printf("init_zipformer_model fail! ret=%d oiner_path=%s\n", ret, joiner_path);
-        goto out;
+        // goto out;
     }
     build_input_output(&rknn_app_ctx.joiner_context);
     timer.tok();
     timer.print_time("init_zipformer_joiner_model");
 
     timer.tik();
+
     ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
     if (ret != 0)
     {
         printf("inference_zipformer_model fail! ret=%d\n", ret);
-        goto out;
+        // goto out;
     }
     timer.tok();
     timer.print_time("inference_zipformer_model");
@@ -165,11 +179,30 @@ int main(int argc, char **argv)
     }
     std::cout << std::endl;
 
-out:
+    std::cout << "说话他吗的" << std::endl;
+    sherpa_onnx::Alsa alsa(device_name);
+    while (true)
+    {
+        int32_t chunk = 0.1 * alsa.GetActualSampleRate();
+        std::vector<float> samples = alsa.Read(chunk);
+        audio.data = samples.data();
+        audio.num_frames = samples.size();
+        audio.num_channels = 1;
+        audio.sample_rate = alsa.GetActualSampleRate();
+
+        ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
+        // std::cout << "\nZipformer output: ";
+        for (const auto &str : recognized_text)
+        {
+            std::cout << str;
+        }
+    }
+
+// out:
 
     if (audio.data)
     {
-        free(audio.data);
+        // free(audio.data);
     }
 
     for (int i = 0; i < VOCAB_NUM; i++)
@@ -198,6 +231,5 @@ out:
     {
         printf("release_zipformer_model joiner_context fail! ret=%d\n", ret);
     }
-
     return 0;
 }

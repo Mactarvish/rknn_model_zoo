@@ -185,6 +185,7 @@ fi
 
 cd ${BUILD_DIR}
 cmake ../../${BUILD_DEMO_PATH} \
+    -DCMAKE_TOOLCHAIN_FILE=/home/mck/third_party/rknn_model_zoo/toolchains/aarch64-linux-gnu.toolchain.cmake \
     -DTARGET_SOC=${TARGET_SOC} \
     -DCMAKE_SYSTEM_NAME=Linux \
     -DCMAKE_SYSTEM_PROCESSOR=${TARGET_ARCH} \
