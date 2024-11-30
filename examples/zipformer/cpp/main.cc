@@ -162,7 +162,7 @@ int main(int argc, char **argv)
 
     timer.tik();
 
-
+    RknnStream stream;
     SpeechRecognizer recognizer(SpeechRecognitionConfig{
         .expectedSampleRate = 16000,
         .modelPath = "",
@@ -211,7 +211,7 @@ int main(int argc, char **argv)
     // std::cout << std::endl;
     logger->info("执行Recognizer推理");
     std::string text;
-    recognizer.Recognize(audio, text);
+    recognizer.Recognize(audio, &stream, text);
     std::cout << text << std::endl;
     logger->info("执行demo推理");
     ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
@@ -227,80 +227,6 @@ int main(int argc, char **argv)
     timer.tok();
     timer.print_time("inference_zipformer_model");
     exit(0);
-
-
-
-
-
-
-    
-
-    infer_time = timer.get_time() / 1000.0; // sec
-    rtf = infer_time / audio_length;
-    printf("\nReal Time Factor (RTF): %.3f / %.3f = %.3f\n", infer_time, audio_length, rtf);
-
-    // print result
-    std::cout << "\nTimestamp (s): ";
-    std::cout << std::fixed << std::setprecision(2);
-    for (size_t i = 0; i < timestamp.size(); ++i)
-    {
-        std::cout << timestamp[i] * frame_shift_s;
-        if (i < timestamp.size() - 1)
-        {
-            std::cout << ", ";
-        }
-    }
-    std::cout << std::endl;
-
-    std::cout << "\nZipformer output: ";
-    for (const auto &str : recognized_text)
-    {
-        std::cout << str;
-    }
-    std::cout << std::endl;
-
-    auto audioPiece = audio;
-    auto sampleSize = 3200 * 2;
-    std::cout << "audio.num_frames: " << audio.num_frames << std::endl;
-    for (int k = 0; k < ceil(audio.num_frames / float(sampleSize)); k++)
-    {
-        std::cout << k << std::endl;
-        audioPiece.data = audio.data + sampleSize * k;
-        audioPiece.num_frames = std::min(sampleSize, audio.num_frames - k * sampleSize);
-        ret = inference_zipformer_model(&rknn_app_ctx, audioPiece, vocab, recognized_text, timestamp, audio_length);
-        if (ret != 0)
-        {
-            printf("inference_zipformer_model fail! ret=%d\n", ret);
-            // goto out;
-        }
-        for (const auto &str : recognized_text)
-        {
-            std::cout << str;
-        }
-    }
-
-    exit(0);
-    sherpa_onnx::Alsa alsa(device_name);
-    std::cout << "说话他吗的" << std::endl;
-    while (true)
-    {
-        static auto cc = 0;
-        cc++;
-        int32_t chunk = 0.1 * alsa.GetActualSampleRate();
-        std::vector<float> &samples = alsa.Read(chunk);
-        std::cout << cc << " " << samples.size() << std::endl;
-        audio.data = samples.data();
-        audio.num_frames = samples.size();
-        audio.num_channels = 1;
-        audio.sample_rate = alsa.GetActualSampleRate();
-
-        ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
-        // std::cout << "\nZipformer output: ";
-        for (const auto &str : recognized_text)
-        {
-            std::cout << str;
-        }
-    }
 
     // out:
 

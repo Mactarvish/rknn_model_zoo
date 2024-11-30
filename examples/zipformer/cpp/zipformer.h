@@ -21,6 +21,7 @@
 #include <vector>
 #include <string>
 #include "process.h"
+#include "stream.h"
 
 #define BLANK_ID 0
 #define UNK_ID 2
@@ -68,8 +69,11 @@ public:
     virtual ~SpeechRecognizer();
 
     // bool Recognize(const std::vector<float> &samples, std::string& result);
-    bool Recognize(const audio_buffer_t& audio, std::string& result);
-    bool Recognize(const std::string srcWavPath, std::string& result);
+    // bool Recognize(const audio_buffer_t& audio, std::string& result);
+    // bool Recognize(const std::string srcWavPath, std::string& result);
+    bool Recognize(const audio_buffer_t& audio, RknnStream* stream, std::string& result);
+    bool IsReady(RknnStream* s);
+    bool IsEndpoint(RknnStream* s);
 
 private:
 #ifdef USE_SHERPA_NCNN_RECOGNITION
@@ -83,6 +87,7 @@ private:
 #elif defined(USE_SHERPA_RKNN_RECOGNITION)
     rknn_zipformer_context_t rknn_app_ctx;
     VocabEntry vocab[VOCAB_NUM];
+    knf::OnlineFbank* fbank;
 
 #endif
     const int32_t expectedSampleRate;

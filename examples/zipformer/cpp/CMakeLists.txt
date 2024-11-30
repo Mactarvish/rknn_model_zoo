@@ -31,6 +31,7 @@ add_executable(${PROJECT_NAME}
     alsa/alsa.cc
     alsa/resample.cc
     ${rknpu_zipformer_file}
+    stream.cc
 )
 
 target_link_libraries(${PROJECT_NAME}

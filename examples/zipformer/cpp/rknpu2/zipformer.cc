@@ -503,8 +503,6 @@ SpeechRecognizer::SpeechRecognizer(const SpeechRecognitionConfig &config): expec
         printf("read vocab fail! ret=%d vocab_path=%s\n", ret, config.vocabPath.c_str());
         // goto out;
     }
-
-    return;
 }
 
 
@@ -538,12 +536,10 @@ SpeechRecognizer::~SpeechRecognizer()
             vocab[i].token = NULL;
         }
     }
-
-    return;
 }
 
 
-bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, std::string& result)
+bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, RknnStream* stream, std::string& result)
 {
     int ret;
     // audio_buffer_t audio;
@@ -551,12 +547,60 @@ bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, std::string& resul
     std::vector<float> timestamp;
     float audio_length;
 
-    // audio.data = (float *)samples.data();
-    // audio.num_frames = samples.size();
-    // audio.num_channels = 1;
-    // audio.sample_rate = expectedSampleRate;
+    recognized_text.clear();
+    timestamp.clear();
 
-    ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
+    float *encoder_input = (float *)rknn_app_ctx.encoder_context.inputs[0].buf;
+    float *encoder_output = (float *)rknn_app_ctx.encoder_context.outputs[0].buf;
+    int64_t *hyp = (int64_t *)rknn_app_ctx.decoder_context.inputs[0].buf;
+    float *decoder_output = (float *)rknn_app_ctx.decoder_context.outputs[0].buf;
+    float *joiner_output = (float *)rknn_app_ctx.joiner_context.outputs[0].buf;
+
+    // knf::FbankOptions fbank_opts;
+    // fbank_opts.frame_opts.samp_freq = 16000;
+    // fbank_opts.mel_opts.num_bins = 80;
+    // fbank_opts.mel_opts.high_freq = -400;
+    // fbank_opts.frame_opts.dither = 0;
+    // fbank_opts.frame_opts.snip_edges = false;
+    // knf::OnlineFbank fbank(fbank_opts);
+
+    int num_frames = 0;
+    int num_processed_frames = 0;
+    int offset = N_OFFSET;
+    int segment = N_SEGMENT;
+    float tail_pad_length = 0.0; // sec
+    stream->AcceptWaveform(SAMPLE_RATE, audio.data, audio.num_frames);
+    num_frames = stream->NumFramesReady();
+    int frame_offset = 0;
+
+    while ((num_frames - num_processed_frames) > 0)
+    {
+        if ((num_frames - num_processed_frames) < segment) // 这段同decode-file-c-api.c // add some tail padding那一段
+        {
+            tail_pad_length = (segment - (num_frames - num_processed_frames)) / 100.0f; // sec
+            std::vector<float> tail_paddings(int(tail_pad_length * SAMPLE_RATE));
+            stream->AcceptWaveform(SAMPLE_RATE, tail_paddings.data(), tail_paddings.size());
+            stream->InputFinished();
+        }
+        // 从num_processed_frames个frame开始，取segment个frame写入到encoder_input
+        ret = stream->GetFbankFrames(num_processed_frames, segment, encoder_input);
+        // ret = get_fbank_frames(&fbank, num_processed_frames, segment, encoder_input); 
+        if (ret < 0)
+        {
+            break;
+        }
+
+        ret = greedy_search(&rknn_app_ctx, encoder_input, encoder_output, decoder_output, hyp, joiner_output, vocab, recognized_text, timestamp, num_processed_frames, frame_offset);
+        if (ret < 0)
+        {
+            printf("greedy_search fail! ret=%d\n", ret);
+        }
+        num_processed_frames += offset;
+    }
+
+    audio_length = (float)audio.num_frames / audio.sample_rate + tail_pad_length;
+
+    // ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
     if (ret != 0)
     {
         printf("inference_zipformer_model fail! ret=%d\n", ret);
