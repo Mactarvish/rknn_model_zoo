@@ -19,6 +19,10 @@
 #include "zipformer.h"
 #include "process.h"
 
+#include "../utils/logger.h"
+
+static auto logger = GetLogger("zipformer");
+
 static void dump_tensor_attr(rknn_tensor_attr *attr)
 {
     char dims_str[100];
@@ -354,7 +358,7 @@ static int greedy_search(rknn_zipformer_context_t *app_ctx, float *encoder_input
         return ret;
     }
 
-    if (num_processed_frames == 0)
+    if (num_processed_frames == 0) // 这里对应greedy-search-decoder中Decode函数里   if (decoder_out.empty()) 这段内容
     {
         ret = inference_decoder_model(&app_ctx->decoder_context);
         if (ret < 0)
@@ -367,14 +371,14 @@ static int greedy_search(rknn_zipformer_context_t *app_ctx, float *encoder_input
     for (int i = 0; i < ENCODER_OUTPUT_T; i++)
     {
         float *cur_encoder_output = encoder_output + i * DECODER_DIM;
-        ret = inference_joiner_model(&app_ctx->joiner_context, cur_encoder_output, decoder_output);
+        ret = inference_joiner_model(&app_ctx->joiner_context, cur_encoder_output, decoder_output); // RunJoiner
         if (ret < 0)
         {
             printf("inference_joiner_model fail! ret=%d\n", ret);
             return ret;
         }
 
-        int next_token = argmax(joiner_output);
+        int next_token = argmax(joiner_output); // 这一步才是greedy_search
         if (next_token != BLANK_ID && next_token != UNK_ID)
         {
             timestamp.push_back(frame_offset + i);
@@ -434,14 +438,15 @@ int inference_zipformer_model(rknn_zipformer_context_t *app_ctx, audio_buffer_t 
 
     while ((num_frames - num_processed_frames) > 0)
     {
-        if ((num_frames - num_processed_frames) < segment)
+        if ((num_frames - num_processed_frames) < segment) // 这段同decode-file-c-api.c // add some tail padding那一段
         {
             tail_pad_length = (segment - (num_frames - num_processed_frames)) / 100.0f; // sec
             std::vector<float> tail_paddings(int(tail_pad_length * SAMPLE_RATE));
             fbank.AcceptWaveform(SAMPLE_RATE, tail_paddings.data(), tail_paddings.size());
             fbank.InputFinished();
         }
-        ret = get_fbank_frames(&fbank, num_processed_frames, segment, encoder_input);
+        // 从num_processed_frames个frame开始，取segment个frame写入到encoder_input
+        ret = get_fbank_frames(&fbank, num_processed_frames, segment, encoder_input); 
         if (ret < 0)
         {
             break;
@@ -462,3 +467,119 @@ out:
 
     return ret;
 }
+
+
+SpeechRecognizer::SpeechRecognizer(const SpeechRecognitionConfig &config): expectedSampleRate(16000)
+{
+    int ret;
+
+    ret = init_zipformer_model(config.encoderPath.c_str(), &rknn_app_ctx.encoder_context);
+    if (ret != 0)
+    {
+        printf("init_zipformer_model fail! ret=%d encoder_path=%s\n", ret, config.encoderPath.c_str());
+        // goto out;
+    }
+    build_input_output(&rknn_app_ctx.encoder_context);
+
+    ret = init_zipformer_model(config.decoderPath.c_str(), &rknn_app_ctx.decoder_context);
+    if (ret != 0)
+    {
+        printf("init_zipformer_model fail! ret=%d decoder_path=%s\n", ret, config.decoderPath.c_str());
+        // goto out;
+    }
+    build_input_output(&rknn_app_ctx.decoder_context);
+
+    ret = init_zipformer_model(config.joinerPath.c_str(), &rknn_app_ctx.joiner_context);
+    if (ret != 0)
+    {
+        printf("init_zipformer_model fail! ret=%d joiner_path=%s\n", ret, config.joinerPath.c_str());
+        // goto out;
+    }
+    build_input_output(&rknn_app_ctx.joiner_context);
+
+    ret = read_vocab(config.vocabPath.c_str(), vocab);
+    if (ret != 0)
+    {
+        printf("read vocab fail! ret=%d vocab_path=%s\n", ret, config.vocabPath.c_str());
+        // goto out;
+    }
+
+    return;
+}
+
+
+SpeechRecognizer::~SpeechRecognizer()
+{
+    int ret;
+
+    ret = release_zipformer_model(&rknn_app_ctx.encoder_context);
+    if (ret != 0)
+    {
+        printf("release_zipformer_model encoder_context fail! ret=%d\n", ret);
+    }
+
+    ret = release_zipformer_model(&rknn_app_ctx.decoder_context);
+    if (ret != 0)
+    {
+        printf("release_zipformer_model decoder_context fail! ret=%d\n", ret);
+    }
+
+    ret = release_zipformer_model(&rknn_app_ctx.joiner_context);
+    if (ret != 0)
+    {
+        printf("release_zipformer_model joiner_context fail! ret=%d\n", ret);
+    }
+
+    for (int i = 0; i < VOCAB_NUM; i++)
+    {
+        if (vocab[i].token)
+        {
+            free(vocab[i].token);
+            vocab[i].token = NULL;
+        }
+    }
+
+    return;
+}
+
+
+bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, std::string& result)
+{
+    int ret;
+    // audio_buffer_t audio;
+    std::vector<std::string> recognized_text;
+    std::vector<float> timestamp;
+    float audio_length;
+
+    // audio.data = (float *)samples.data();
+    // audio.num_frames = samples.size();
+    // audio.num_channels = 1;
+    // audio.sample_rate = expectedSampleRate;
+
+    ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
+    if (ret != 0)
+    {
+        printf("inference_zipformer_model fail! ret=%d\n", ret);
+        return false;
+    }
+
+    result.clear();
+    for (const auto &str : recognized_text)
+    {
+        result += str;
+    }
+
+    return true;
+}
+
+// bool SpeechRecognizer::Recognize(const std::string srcWavPath, std::string& result)
+// {
+//     bool isOk;
+//     auto ss = sherpa_onnx::ReadWave(srcWavPath, &expectedSampleRate, &isOk);
+//     if (!isOk)
+//     {
+//         return false;
+//     }
+
+//     return Recognize(ss, result);
+// }

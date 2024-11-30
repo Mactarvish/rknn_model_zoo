@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "zipformer.h"
 // #include "audio_utils.h"
 #include <iostream>
@@ -31,6 +32,10 @@
 #include <string>
 #include "process.h"
 #include <iomanip>
+
+#include "utils/logger.h"
+
+static auto logger = GetLogger("speech_interaction_demo");
 
 /*-------------------------------------------
                   Main Function
@@ -51,6 +56,17 @@ int main(int argc, char **argv)
 
     const char *device_name = argv[5];
 
+    const char *wav_filename = audio_path;
+    FILE *fp = fopen(wav_filename, "rb");
+    if (!fp)
+    {
+        fprintf(stderr, "Failed to open %s\n", wav_filename);
+        return -1;
+    }
+
+    // Assume the wave header occupies 44 bytes. 跳过元信息
+    fseek(fp, 44, SEEK_SET);
+
     int ret;
     TIMER timer;
     float infer_time = 0.0;
@@ -69,10 +85,10 @@ int main(int argc, char **argv)
     memset(&audio, 0, sizeof(audio_buffer_t));
 
     bool isOk;
-    auto samples = sherpa_onnx::ReadWave(std::string(audio_path), &audio.sample_rate, &isOk);
-    audio.data = samples.data();
+    auto ss = sherpa_onnx::ReadWave(std::string(audio_path), &audio.sample_rate, &isOk);
+    audio.data = ss.data();
     audio.num_channels = 1;
-    audio.num_frames = samples.size();
+    audio.num_frames = ss.size();
 
     timer.tik();
     // ret = read_audio(audio_path, &audio);
@@ -146,7 +162,63 @@ int main(int argc, char **argv)
 
     timer.tik();
 
+
+    SpeechRecognizer recognizer(SpeechRecognitionConfig{
+        .expectedSampleRate = 16000,
+        .modelPath = "",
+        .vocabPath = VOCAB_PATH,
+        .encoderPath = encoder_path,
+        .decoderPath = decoder_path,
+        .joinerPath = joiner_path});
+
+    // 执行推理
+#define N 3200  // 0.2 s. Sample rate is fixed to 16 kHz
+
+    // int16_t buffer[N];
+    // float samples[N];
+
+    // while (!feof(fp))
+    // {
+    //     size_t n = fread((void *)buffer, sizeof(int16_t), N, fp);
+    //     if (n > 0)
+    //     {
+    //         for (size_t i = 0; i != n; ++i)
+    //         {
+    //             samples[i] = buffer[i] / 32768.;
+    //         }
+    //         audio_buffer_t f = {samples, N, 1, 16000};
+    //         ret = inference_zipformer_model(&rknn_app_ctx, f, vocab, recognized_text, timestamp, audio_length);
+    //         std::cout << recognized_text.size() << std::endl;
+    //         for (const auto &str : recognized_text)
+    //         {
+    //             std::cout << str;
+    //         }
+    //         // AcceptWaveform(s, 16000, samples, n);
+    //         // while (IsReady(recognizer, s))
+    //         // {
+    //         //     Decode(recognizer, s);
+    //         // }
+
+    //         // SherpaNcnnResult *r = GetResult(recognizer, s);
+    //         // if (strlen(r->text))
+    //         // {
+    //         //     SherpaNcnnPrint(display, segment_id, r->text);
+    //         // }
+    //         // DestroyResult(r);
+    //     }
+    // }
+    // fclose(fp);
+    // std::cout << std::endl;
+    logger->info("执行Recognizer推理");
+    std::string text;
+    recognizer.Recognize(audio, text);
+    std::cout << text << std::endl;
+    logger->info("执行demo推理");
     ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
+    for (const auto &str : recognized_text)
+    {
+        std::cout << str;
+    }
     if (ret != 0)
     {
         printf("inference_zipformer_model fail! ret=%d\n", ret);
@@ -154,6 +226,14 @@ int main(int argc, char **argv)
     }
     timer.tok();
     timer.print_time("inference_zipformer_model");
+    exit(0);
+
+
+
+
+
+
+    
 
     infer_time = timer.get_time() / 1000.0; // sec
     rtf = infer_time / audio_length;
@@ -179,12 +259,36 @@ int main(int argc, char **argv)
     }
     std::cout << std::endl;
 
-    std::cout << "说话他吗的" << std::endl;
+    auto audioPiece = audio;
+    auto sampleSize = 3200 * 2;
+    std::cout << "audio.num_frames: " << audio.num_frames << std::endl;
+    for (int k = 0; k < ceil(audio.num_frames / float(sampleSize)); k++)
+    {
+        std::cout << k << std::endl;
+        audioPiece.data = audio.data + sampleSize * k;
+        audioPiece.num_frames = std::min(sampleSize, audio.num_frames - k * sampleSize);
+        ret = inference_zipformer_model(&rknn_app_ctx, audioPiece, vocab, recognized_text, timestamp, audio_length);
+        if (ret != 0)
+        {
+            printf("inference_zipformer_model fail! ret=%d\n", ret);
+            // goto out;
+        }
+        for (const auto &str : recognized_text)
+        {
+            std::cout << str;
+        }
+    }
+
+    exit(0);
     sherpa_onnx::Alsa alsa(device_name);
+    std::cout << "说话他吗的" << std::endl;
     while (true)
     {
+        static auto cc = 0;
+        cc++;
         int32_t chunk = 0.1 * alsa.GetActualSampleRate();
-        std::vector<float> samples = alsa.Read(chunk);
+        std::vector<float> &samples = alsa.Read(chunk);
+        std::cout << cc << " " << samples.size() << std::endl;
         audio.data = samples.data();
         audio.num_frames = samples.size();
         audio.num_channels = 1;
@@ -198,7 +302,7 @@ int main(int argc, char **argv)
         }
     }
 
-// out:
+    // out:
 
     if (audio.data)
     {

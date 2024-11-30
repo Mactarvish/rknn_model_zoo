@@ -139,14 +139,14 @@ and if you want to select card 3 and device 0 on that card, please use:
 
 Alsa::~Alsa() { snd_pcm_close(capture_handle_); }
 
-const std::vector<float> &Alsa::Read(int32_t num_samples) {
+std::vector<float> &Alsa::Read(int32_t num_samples) {
   samples_.resize(num_samples * actual_channel_count_);
 
   // count is in frames. Each frame contains actual_channel_count_ samples
   int32_t count = snd_pcm_readi(capture_handle_, samples_.data(), num_samples);
   if (count == -EPIPE) {
     static int32_t n = 0;
-    if (false && ++n > 5) {
+    if (++n > 5) {
       fprintf(
           stderr,
           "Too many overruns. It is very likely that the RTF on your board is "

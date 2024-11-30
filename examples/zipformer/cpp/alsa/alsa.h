@@ -23,7 +23,7 @@ class Alsa {
   // @param num_samples  Number of samples to read.
   //
   // The returned value is valid until the next call to Read().
-  const std::vector<float> &Read(int32_t num_samples);
+  std::vector<float> &Read(int32_t num_samples);
 
   int32_t GetExpectedSampleRate() const { return expected_sample_rate_; }
   int32_t GetActualSampleRate() const { return actual_sample_rate_; }

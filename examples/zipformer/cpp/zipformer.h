@@ -24,6 +24,7 @@
 
 #define BLANK_ID 0
 #define UNK_ID 2
+#define USE_SHERPA_RKNN_RECOGNITION
 
 typedef struct
 {
@@ -47,5 +48,44 @@ int inference_zipformer_model(rknn_zipformer_context_t *app_ctx, audio_buffer_t 
                               std::vector<float> &timestamp, float &audio_length);
 int release_zipformer_model(rknn_app_context_t *app_ctx);
 void build_input_output(rknn_app_context_t *app_ctx);
+
+
+
+struct SpeechRecognitionConfig
+{
+    int32_t expectedSampleRate;
+    std::string modelPath;
+    std::string vocabPath;
+    std::string encoderPath;
+    std::string decoderPath;
+    std::string joinerPath;
+};
+
+class SpeechRecognizer
+{
+public:
+    explicit SpeechRecognizer(const SpeechRecognitionConfig &config);
+    virtual ~SpeechRecognizer();
+
+    // bool Recognize(const std::vector<float> &samples, std::string& result);
+    bool Recognize(const audio_buffer_t& audio, std::string& result);
+    bool Recognize(const std::string srcWavPath, std::string& result);
+
+private:
+#ifdef USE_SHERPA_NCNN_RECOGNITION
+    SherpaNcnnRecognizer* recognizer;
+    SherpaNcnnStream* stream;
+    SherpaNcnnDisplay* display;
+#elif defined(USE_SHERPA_ONNX_RECOGNITION)
+    SherpaOnnxOnlineRecognizer *recognizer;
+    SherpaOnnxOnlineStream *stream;
+    const SherpaOnnxDisplay *display;
+#elif defined(USE_SHERPA_RKNN_RECOGNITION)
+    rknn_zipformer_context_t rknn_app_ctx;
+    VocabEntry vocab[VOCAB_NUM];
+
+#endif
+    const int32_t expectedSampleRate;
+};
 
 #endif //_RKNN_DEMO_ZIPFORMER_H_

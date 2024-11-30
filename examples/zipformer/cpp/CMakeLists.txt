@@ -20,6 +20,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/ utils.out)
 
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 
+find_package(spdlog REQUIRED)
+
 file(GLOB SRCS ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 
 add_executable(${PROJECT_NAME}
@@ -37,6 +39,7 @@ target_link_libraries(${PROJECT_NAME}
     ${LIBRKNNRT}
     ${LIBKALDI_NATIVE_FBANK}
     asound
+    spdlog::spdlog_header_only
 )
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
