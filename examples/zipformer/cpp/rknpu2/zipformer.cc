@@ -346,7 +346,7 @@ out:
     return ret;
 }
 
-static int greedy_search(rknn_zipformer_context_t *app_ctx, float *encoder_input, float *encoder_output, float *decoder_output, int64_t *hyp,
+static int greedy_search(rknn_zipformer_context_t *app_ctx, float *encoder_input, float *encoder_output, int64_t *decoder_input, float *decoder_output,
                          float *joiner_output, VocabEntry *vocab, std::vector<std::string> &recognized_text, std::vector<float> &timestamp, int num_processed_frames, int &frame_offset)
 {
     int ret = 0;
@@ -378,17 +378,17 @@ static int greedy_search(rknn_zipformer_context_t *app_ctx, float *encoder_input
             return ret;
         }
 
-        int next_token = argmax(joiner_output); // 这一步才是greedy_search
+        int next_token = argmax(joiner_output);
         if (next_token != BLANK_ID && next_token != UNK_ID)
         {
             timestamp.push_back(frame_offset + i);
 
             for (int j = 0; j < CONTEXT_SIZE - 1; j++)
             {
-                hyp[j] = hyp[j + 1];
+                decoder_input[j] = decoder_input[j + 1];
             }
 
-            hyp[CONTEXT_SIZE - 1] = (int64_t)next_token;
+            decoder_input[CONTEXT_SIZE - 1] = (int64_t)next_token;
             std::string next_token_str = vocab[next_token].token;
             replace_substr(next_token_str, "▁", " ");
             recognized_text.push_back(next_token_str);
@@ -415,7 +415,7 @@ int inference_zipformer_model(rknn_zipformer_context_t *app_ctx, audio_buffer_t 
 
     float *encoder_input = (float *)app_ctx->encoder_context.inputs[0].buf;
     float *encoder_output = (float *)app_ctx->encoder_context.outputs[0].buf;
-    int64_t *hyp = (int64_t *)app_ctx->decoder_context.inputs[0].buf;
+    int64_t *decoder_input = (int64_t *)app_ctx->decoder_context.inputs[0].buf;
     float *decoder_output = (float *)app_ctx->decoder_context.outputs[0].buf;
     float *joiner_output = (float *)app_ctx->joiner_context.outputs[0].buf;
 
@@ -452,7 +452,7 @@ int inference_zipformer_model(rknn_zipformer_context_t *app_ctx, audio_buffer_t 
             break;
         }
 
-        ret = greedy_search(app_ctx, encoder_input, encoder_output, decoder_output, hyp, joiner_output, vocab, recognized_text, timestamp, num_processed_frames, frame_offset);
+        ret = greedy_search(app_ctx, encoder_input, encoder_output, decoder_input, decoder_output, joiner_output, vocab, recognized_text, timestamp, num_processed_frames, frame_offset);
         if (ret < 0)
         {
             printf("greedy_search fail! ret=%d\n", ret);
@@ -552,7 +552,7 @@ bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, RknnStream* stream
 
     float *encoder_input = (float *)rknn_app_ctx.encoder_context.inputs[0].buf;
     float *encoder_output = (float *)rknn_app_ctx.encoder_context.outputs[0].buf;
-    int64_t *hyp = (int64_t *)rknn_app_ctx.decoder_context.inputs[0].buf;
+    int64_t *decoder_input = (int64_t *)rknn_app_ctx.decoder_context.inputs[0].buf;
     float *decoder_output = (float *)rknn_app_ctx.decoder_context.outputs[0].buf;
     float *joiner_output = (float *)rknn_app_ctx.joiner_context.outputs[0].buf;
 
@@ -590,7 +590,7 @@ bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, RknnStream* stream
             break;
         }
 
-        ret = greedy_search(&rknn_app_ctx, encoder_input, encoder_output, decoder_output, hyp, joiner_output, vocab, recognized_text, timestamp, num_processed_frames, frame_offset);
+        ret = greedy_search(&rknn_app_ctx, encoder_input, encoder_output, decoder_input, decoder_output, joiner_output, vocab, recognized_text, timestamp, num_processed_frames, frame_offset);
         if (ret < 0)
         {
             printf("greedy_search fail! ret=%d\n", ret);
