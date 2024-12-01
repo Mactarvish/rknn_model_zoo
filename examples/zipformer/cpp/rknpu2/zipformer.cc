@@ -399,9 +399,77 @@ static int greedy_search(rknn_zipformer_context_t *app_ctx, float *encoder_input
                 return ret;
             }
         }
+        else
+        {
+            // ++result->num_trailing_blanks; // 记录（末端）连续的空白帧数，用于判断是否到达endpoint
+        }
     }
 
     frame_offset += ENCODER_OUTPUT_T;
+
+    return ret;
+}
+
+static int DecodePipeline(rknn_zipformer_context_t *app_ctx, float *encoder_input, float *encoder_output, int64_t *decoder_input, float *decoder_output,
+                         float *joiner_output, VocabEntry *vocab, int num_processed_frames, DecoderResult& result)
+{
+    int ret = 0;
+
+    ret = inference_encoder_model(&app_ctx->encoder_context);
+    if (ret < 0)
+    {
+        printf("inference_encoder_model fail! ret=%d\n", ret);
+        return ret;
+    }
+
+    if (num_processed_frames == 0) // 这里对应greedy-search-decoder中Decode函数里   if (decoder_out.empty()) 这段内容
+    {
+        ret = inference_decoder_model(&app_ctx->decoder_context);
+        if (ret < 0)
+        {
+            printf("inference_decoder_model fail! ret=%d\n", ret);
+            return ret;
+        }
+    }
+
+    for (int i = 0; i < ENCODER_OUTPUT_T; i++)
+    {
+        float *cur_encoder_output = encoder_output + i * DECODER_DIM;
+        ret = inference_joiner_model(&app_ctx->joiner_context, cur_encoder_output, decoder_output); // RunJoiner
+        if (ret < 0)
+        {
+            printf("inference_joiner_model fail! ret=%d\n", ret);
+            return ret;
+        }
+
+        int next_token = argmax(joiner_output);
+        if (next_token != BLANK_ID && next_token != UNK_ID)
+        {
+            result.timestamps.push_back(result.frame_offset + i);
+
+            for (int j = 0; j < CONTEXT_SIZE - 1; j++)
+            {
+                decoder_input[j] = decoder_input[j + 1];
+            }
+
+            decoder_input[CONTEXT_SIZE - 1] = (int64_t)next_token;
+            std::string next_token_str = vocab[next_token].token;
+            replace_substr(next_token_str, "▁", " ");
+            result.text += next_token_str;
+            ret = inference_decoder_model(&app_ctx->decoder_context);
+            if (ret < 0)
+            {
+                printf("inference_decoder_model fail! ret=%d\n", ret);
+                return ret;
+            }
+        }
+        else
+        {
+            result.num_trailing_blanks++; // 记录（末端）连续的空白帧数，用于判断是否到达endpoint
+        }
+    }
+
+    result.frame_offset += ENCODER_OUTPUT_T;
 
     return ret;
 }
@@ -556,14 +624,6 @@ bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, RknnStream* stream
     float *decoder_output = (float *)rknn_app_ctx.decoder_context.outputs[0].buf;
     float *joiner_output = (float *)rknn_app_ctx.joiner_context.outputs[0].buf;
 
-    // knf::FbankOptions fbank_opts;
-    // fbank_opts.frame_opts.samp_freq = 16000;
-    // fbank_opts.mel_opts.num_bins = 80;
-    // fbank_opts.mel_opts.high_freq = -400;
-    // fbank_opts.frame_opts.dither = 0;
-    // fbank_opts.frame_opts.snip_edges = false;
-    // knf::OnlineFbank fbank(fbank_opts);
-
     int num_frames = 0;
     int num_processed_frames = 0;
     int offset = N_OFFSET;
@@ -614,6 +674,64 @@ bool SpeechRecognizer::Recognize(const audio_buffer_t& audio, RknnStream* stream
     }
 
     return true;
+}
+
+std::unique_ptr<RknnStream> SpeechRecognizer::CreateStream()
+{
+    return std::make_unique<RknnStream>();
+}
+
+
+void SpeechRecognizer::DecodeStream(RknnStream* stream)
+{
+    int ret;
+    std::vector<std::string> recognized_text;
+    std::vector<float> timestamp;
+    float audio_length;
+
+    recognized_text.clear();
+    timestamp.clear();
+
+    float *encoder_input = (float *)rknn_app_ctx.encoder_context.inputs[0].buf;
+    float *encoder_output = (float *)rknn_app_ctx.encoder_context.outputs[0].buf;
+    int64_t *decoder_input = (int64_t *)rknn_app_ctx.decoder_context.inputs[0].buf;
+    float *decoder_output = (float *)rknn_app_ctx.decoder_context.outputs[0].buf;
+    float *joiner_output = (float *)rknn_app_ctx.joiner_context.outputs[0].buf;
+
+    int num_frames = 0;
+    int offset = N_OFFSET;
+    int segment = N_SEGMENT;
+    float tail_pad_length = 0.0; // sec
+
+    num_frames = stream->NumFramesReady();
+    int frame_offset = 0;
+
+    ret = stream->GetFbankFrames(stream->GetNumProcessedFrames(), segment, encoder_input);
+    auto& result = stream->GetResult();
+    ret = DecodePipeline(&rknn_app_ctx, encoder_input, encoder_output, decoder_input, decoder_output, joiner_output, vocab, stream->GetNumProcessedFrames(), result);
+    stream->GetNumProcessedFrames() += offset;
+}
+
+bool SpeechRecognizer::IsReady(RknnStream* s)
+{
+    return s->GetNumProcessedFrames() + N_SEGMENT < s->NumFramesReady(); // 还有足够的帧数可以完成下一次推理
+}
+
+
+bool SpeechRecognizer::IsEndpoint(RknnStream* s)
+{
+    return false;
+    // if (!config_.enable_endpoint) return false;
+    int32_t num_processed_frames = s->GetNumProcessedFrames();
+
+    // frame shift is 10 milliseconds
+    float frame_shift_in_seconds = 0.01;
+
+    // subsampling factor is 4
+    int32_t trailing_silence_frames = s->GetResult().num_trailing_blanks * 4;
+
+    // return endpoint_.IsEndpoint(num_processed_frames, trailing_silence_frames,
+    //                             frame_shift_in_seconds);
 }
 
 // bool SpeechRecognizer::Recognize(const std::string srcWavPath, std::string& result)

@@ -162,57 +162,63 @@ int main(int argc, char **argv)
 
     timer.tik();
 
-    RknnStream stream;
+
     SpeechRecognizer recognizer(SpeechRecognitionConfig{
-        .expectedSampleRate = 16000,
+        .expectedSampleRate = SAMPLE_RATE,
         .modelPath = "",
         .vocabPath = VOCAB_PATH,
         .encoderPath = encoder_path,
         .decoderPath = decoder_path,
         .joinerPath = joiner_path});
 
+    auto stream = recognizer.CreateStream();
+
     // 执行推理
 #define N 3200  // 0.2 s. Sample rate is fixed to 16 kHz
 
-    // int16_t buffer[N];
-    // float samples[N];
+    int16_t buffer[N];
+    float samples[N];
 
-    // while (!feof(fp))
-    // {
-    //     size_t n = fread((void *)buffer, sizeof(int16_t), N, fp);
-    //     if (n > 0)
-    //     {
-    //         for (size_t i = 0; i != n; ++i)
-    //         {
-    //             samples[i] = buffer[i] / 32768.;
-    //         }
-    //         audio_buffer_t f = {samples, N, 1, 16000};
-    //         ret = inference_zipformer_model(&rknn_app_ctx, f, vocab, recognized_text, timestamp, audio_length);
-    //         std::cout << recognized_text.size() << std::endl;
-    //         for (const auto &str : recognized_text)
-    //         {
-    //             std::cout << str;
-    //         }
-    //         // AcceptWaveform(s, 16000, samples, n);
-    //         // while (IsReady(recognizer, s))
-    //         // {
-    //         //     Decode(recognizer, s);
-    //         // }
+    logger->info("执行Recognizer分段推理");
+    while (!feof(fp))
+    {
+        size_t n = fread((void *)buffer, sizeof(int16_t), N, fp);
+        if (n > 0)
+        {
+            for (size_t i = 0; i != n; ++i)
+            {
+                samples[i] = buffer[i] / 32768.;
+            }
+            audio_buffer_t f = {samples, N, 1, SAMPLE_RATE};
+            stream->AcceptWaveform(SAMPLE_RATE, samples, n);
+            while (recognizer.IsReady(stream.get()))
+            {
+                recognizer.DecodeStream(stream.get());
+            }
+            
+            bool is_endpoint = recognizer.IsEndpoint(stream.get());
 
-    //         // SherpaNcnnResult *r = GetResult(recognizer, s);
-    //         // if (strlen(r->text))
-    //         // {
-    //         //     SherpaNcnnPrint(display, segment_id, r->text);
-    //         // }
-    //         // DestroyResult(r);
-    //     }
-    // }
-    // fclose(fp);
-    // std::cout << std::endl;
-    logger->info("执行Recognizer推理");
-    std::string text;
-    recognizer.Recognize(audio, &stream, text);
-    std::cout << text << std::endl;
+            if (is_endpoint) 
+            {
+                stream->Finalize();
+            }
+        }
+    }
+    fclose(fp);
+
+    // 补尾巴
+    float tail_paddings[4800] = {0};  // 0.3 seconds at 16 kHz sample rate
+    stream->AcceptWaveform(16000, tail_paddings, 4800);
+    while (recognizer.IsReady(stream.get()))
+    {
+        recognizer.DecodeStream(stream.get());
+    }
+
+
+    logger->info(stream->GetResult().text);
+
+    exit(0);
+
     logger->info("执行demo推理");
     ret = inference_zipformer_model(&rknn_app_ctx, audio, vocab, recognized_text, timestamp, audio_length);
     for (const auto &str : recognized_text)

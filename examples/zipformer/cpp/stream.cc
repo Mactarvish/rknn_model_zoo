@@ -47,10 +47,19 @@ size_t RknnStream::NumFramesReady()
     return fbank->NumFramesReady();
 }
 
+int32_t& RknnStream::GetNumProcessedFrames()
+{
+    return num_processed_frames_;
+}
+
+DecoderResult& RknnStream::GetResult()
+{
+    return result;
+}
 
 void RknnStream::Finalize()
 {
-
+    return fbank->InputFinished();
 }
 
 

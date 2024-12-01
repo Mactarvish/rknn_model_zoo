@@ -72,8 +72,10 @@ public:
     // bool Recognize(const audio_buffer_t& audio, std::string& result);
     // bool Recognize(const std::string srcWavPath, std::string& result);
     bool Recognize(const audio_buffer_t& audio, RknnStream* stream, std::string& result);
+    void DecodeStream(RknnStream* s);
     bool IsReady(RknnStream* s);
     bool IsEndpoint(RknnStream* s);
+    std::unique_ptr<RknnStream> CreateStream();
 
 private:
 #ifdef USE_SHERPA_NCNN_RECOGNITION
