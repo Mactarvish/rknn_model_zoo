@@ -162,7 +162,6 @@ int main(int argc, char **argv)
 
     timer.tik();
 
-
     SpeechRecognizer recognizer(SpeechRecognitionConfig{
         .expectedSampleRate = SAMPLE_RATE,
         .modelPath = "",
@@ -174,10 +173,55 @@ int main(int argc, char **argv)
     auto stream = recognizer.CreateStream();
 
     // 执行推理
-#define N 3200  // 0.2 s. Sample rate is fixed to 16 kHz
+#define N 3200 // 0.2 s. Sample rate is fixed to 16 kHz
 
     int16_t buffer[N];
     float samples[N];
+
+    sherpa_onnx::Alsa alsa(device_name);
+    std::string lastText;
+    int32_t segment_index = 0;
+    while (true)
+    {
+        int32_t chunk = 0.1 * alsa.GetActualSampleRate();
+        const std::vector<float> samples = alsa.Read(chunk);
+
+        stream->AcceptWaveform(SAMPLE_RATE, samples.data(), samples.size());
+        while (recognizer.IsReady(stream.get()))
+        {
+            recognizer.DecodeStream(stream.get());
+        }
+
+        bool is_endpoint = recognizer.IsEndpoint(stream.get());
+
+        if (is_endpoint)
+        {
+            stream->Finalize();
+        }
+        auto text = recognizer.GetResult(stream.get());
+
+        if (!text.empty() && lastText != text)
+        {
+            lastText = text;
+
+            std::transform(text.begin(), text.end(), text.begin(),
+                           [](auto c)
+                           { return std::tolower(c); });
+            // logger->info("{} {}", segment_index, text);
+            // display.Print(segment_index, text);
+        }
+
+        if (is_endpoint)
+        {
+            if (!text.empty())
+            {
+                ++segment_index;
+                logger->info("{} {}", segment_index, text);
+            }
+
+            recognizer.Reset(stream.get());
+        }
+    }
 
     logger->info("执行Recognizer分段推理");
     while (!feof(fp))
@@ -195,10 +239,10 @@ int main(int argc, char **argv)
             {
                 recognizer.DecodeStream(stream.get());
             }
-            
+
             bool is_endpoint = recognizer.IsEndpoint(stream.get());
 
-            if (is_endpoint) 
+            if (is_endpoint)
             {
                 stream->Finalize();
             }
@@ -207,13 +251,12 @@ int main(int argc, char **argv)
     fclose(fp);
 
     // 补尾巴
-    float tail_paddings[4800] = {0};  // 0.3 seconds at 16 kHz sample rate
+    float tail_paddings[4800] = {0}; // 0.3 seconds at 16 kHz sample rate
     stream->AcceptWaveform(16000, tail_paddings, 4800);
     while (recognizer.IsReady(stream.get()))
     {
         recognizer.DecodeStream(stream.get());
     }
-
 
     logger->info(stream->GetResult().text);
 

@@ -22,6 +22,7 @@
 #include <string>
 #include "process.h"
 #include "stream.h"
+#include "endpoint.h"
 
 #define BLANK_ID 0
 #define UNK_ID 2
@@ -74,6 +75,8 @@ public:
     bool Recognize(const audio_buffer_t& audio, RknnStream* stream, std::string& result);
     void DecodeStream(RknnStream* s);
     bool IsReady(RknnStream* s);
+    void Reset(RknnStream* s);
+    std::string GetResult(RknnStream* s);
     bool IsEndpoint(RknnStream* s);
     std::unique_ptr<RknnStream> CreateStream();
 
@@ -90,6 +93,7 @@ private:
     rknn_zipformer_context_t rknn_app_ctx;
     VocabEntry vocab[VOCAB_NUM];
     knf::OnlineFbank* fbank;
+    sherpa_ncnn::Endpoint endpoint_;
 
 #endif
     const int32_t expectedSampleRate;

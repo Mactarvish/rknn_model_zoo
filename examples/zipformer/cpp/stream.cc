@@ -35,7 +35,7 @@ int RknnStream::GetFbankFrames(int frame_index, int segment, float* frames)
 
     for (int i = 0; i < segment; ++i)
     {
-        const float *frame = fbank->GetFrame(i + frame_index);
+        const float *frame = fbank->GetFrame(i + frame_index + start_frame_index_);
         memcpy(frames + i * N_MELS, frame, N_MELS * sizeof(float));
     }
 
@@ -44,12 +44,19 @@ int RknnStream::GetFbankFrames(int frame_index, int segment, float* frames)
 
 size_t RknnStream::NumFramesReady()
 {
-    return fbank->NumFramesReady();
+    return fbank->NumFramesReady() - start_frame_index_;
 }
 
 int32_t& RknnStream::GetNumProcessedFrames()
 {
     return num_processed_frames_;
+}
+
+void RknnStream::SetResult(const DecoderResult& r)
+{
+    int32_t offset = r.frame_offset;
+    result = r;
+    result.frame_offset = offset;
 }
 
 DecoderResult& RknnStream::GetResult()
@@ -59,11 +66,17 @@ DecoderResult& RknnStream::GetResult()
 
 void RknnStream::Finalize()
 {
-    return fbank->InputFinished();
+    
 }
 
 
 void RknnStream::InputFinished()
 {
     return fbank->InputFinished();
+}
+
+void RknnStream::Reset()
+{
+    start_frame_index_ += num_processed_frames_;
+    num_processed_frames_ = 0;
 }

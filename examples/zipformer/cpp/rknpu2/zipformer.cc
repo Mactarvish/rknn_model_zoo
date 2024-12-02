@@ -445,7 +445,6 @@ static int DecodePipeline(rknn_zipformer_context_t *app_ctx, float *encoder_inpu
         int next_token = argmax(joiner_output);
         if (next_token != BLANK_ID && next_token != UNK_ID)
         {
-            result.timestamps.push_back(result.frame_offset + i);
 
             for (int j = 0; j < CONTEXT_SIZE - 1; j++)
             {
@@ -457,6 +456,8 @@ static int DecodePipeline(rknn_zipformer_context_t *app_ctx, float *encoder_inpu
             replace_substr(next_token_str, "▁", " ");
             result.text += next_token_str;
             ret = inference_decoder_model(&app_ctx->decoder_context);
+            result.num_trailing_blanks = 0;
+            result.timestamps.push_back(result.frame_offset + i);
             if (ret < 0)
             {
                 printf("inference_decoder_model fail! ret=%d\n", ret);
@@ -537,7 +538,7 @@ out:
 }
 
 
-SpeechRecognizer::SpeechRecognizer(const SpeechRecognitionConfig &config): expectedSampleRate(16000)
+SpeechRecognizer::SpeechRecognizer(const SpeechRecognitionConfig &config): expectedSampleRate(16000), endpoint_(sherpa_ncnn::EndpointConfig())
 {
     int ret;
 
@@ -720,7 +721,6 @@ bool SpeechRecognizer::IsReady(RknnStream* s)
 
 bool SpeechRecognizer::IsEndpoint(RknnStream* s)
 {
-    return false;
     // if (!config_.enable_endpoint) return false;
     int32_t num_processed_frames = s->GetNumProcessedFrames();
 
@@ -730,10 +730,40 @@ bool SpeechRecognizer::IsEndpoint(RknnStream* s)
     // subsampling factor is 4
     int32_t trailing_silence_frames = s->GetResult().num_trailing_blanks * 4;
 
-    // return endpoint_.IsEndpoint(num_processed_frames, trailing_silence_frames,
-    //                             frame_shift_in_seconds);
+    return endpoint_.IsEndpoint(num_processed_frames, trailing_silence_frames,
+                                frame_shift_in_seconds);
 }
 
+void SpeechRecognizer::Reset(RknnStream* s)
+{
+    DecoderResult r{
+        .frame_offset = 0,
+        .tokens = {},
+        .num_trailing_blanks = 0,
+        .timestamps = {},
+        .text = "",
+    };
+    int64_t *decoder_input = (int64_t *)rknn_app_ctx.decoder_context.inputs[0].buf;
+    decoder_input[0] = BLANK_ID;
+    decoder_input[1] = BLANK_ID;
+    // if (s->GetContextGraph()) {
+    //   for (auto it = r.hyps.begin(); it != r.hyps.end(); ++it) {
+    //     it->second.context_state = s->GetContextGraph()->Root();
+    //   }
+    // }
+    // Caution: We need to keep the decoder output state
+    // ncnn::Mat decoder_out = s->GetResult().decoder_out;
+    s->SetResult(r);
+    // s->GetResult().decoder_out = decoder_out;
+
+    // don't reset encoder state
+    // s->SetStates(model_->GetEncoderInitStates());
+
+    // reset feature extractor
+    // Note: We only reset the counter. The underlying audio samples are
+    // still kept in memory
+    s->Reset();
+}
 // bool SpeechRecognizer::Recognize(const std::string srcWavPath, std::string& result)
 // {
 //     bool isOk;
@@ -745,3 +775,8 @@ bool SpeechRecognizer::IsEndpoint(RknnStream* s)
 
 //     return Recognize(ss, result);
 // }
+
+std::string SpeechRecognizer::GetResult(RknnStream* s)
+{
+    return s->GetResult().text;
+}
