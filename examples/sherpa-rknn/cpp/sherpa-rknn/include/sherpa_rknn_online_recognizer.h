@@ -15,11 +15,10 @@
 #ifndef _RKNN_DEMO_ZIPFORMER_H_
 #define _RKNN_DEMO_ZIPFORMER_H_
 
-#include "rknn_api.h"
-#include "audio_utils.h"
 #include <iostream>
 #include <vector>
 #include <string>
+#include "rknn_api.h"
 #include "stream.h"
 #include "endpoint.h"
 
@@ -45,8 +44,6 @@ typedef struct
 } rknn_zipformer_context_t;
 
 int init_zipformer_model(const char *model_path, rknn_app_context_t *app_ctx);
-int inference_zipformer_model(rknn_zipformer_context_t *app_ctx, audio_buffer_t audio, VocabEntry *vocab, std::vector<std::string> &recognized_text,
-                              std::vector<float> &timestamp, float &audio_length);
 int release_zipformer_model(rknn_app_context_t *app_ctx);
 void build_input_output(rknn_app_context_t *app_ctx);
 
@@ -62,16 +59,12 @@ struct SpeechRecognitionConfig
     std::string joinerPath;
 };
 
-class SpeechRecognizer
+class SherpaRknnOnlineRecognizer
 {
 public:
-    explicit SpeechRecognizer(const SpeechRecognitionConfig &config);
-    virtual ~SpeechRecognizer();
+    explicit SherpaRknnOnlineRecognizer(const SpeechRecognitionConfig &config);
+    virtual ~SherpaRknnOnlineRecognizer();
 
-    // bool Recognize(const std::vector<float> &samples, std::string& result);
-    // bool Recognize(const audio_buffer_t& audio, std::string& result);
-    // bool Recognize(const std::string srcWavPath, std::string& result);
-    bool Recognize(const audio_buffer_t& audio, RknnStream* stream, std::string& result);
     void DecodeStream(RknnStream* s);
     bool IsReady(RknnStream* s);
     void Reset(RknnStream* s);

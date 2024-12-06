@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "zipformer.h"
+#include "sherpa_rknn_online_recognizer.h"
 #include "process.h"
 
 
@@ -343,69 +343,6 @@ out:
     return ret;
 }
 
-static int greedy_search(rknn_zipformer_context_t *app_ctx, float *encoder_input, float *encoder_output, int64_t *decoder_input, float *decoder_output,
-                         float *joiner_output, VocabEntry *vocab, std::vector<std::string> &recognized_text, std::vector<float> &timestamp, int num_processed_frames, int &frame_offset)
-{
-    int ret = 0;
-
-    ret = inference_encoder_model(&app_ctx->encoder_context);
-    if (ret < 0)
-    {
-        printf("inference_encoder_model fail! ret=%d\n", ret);
-        return ret;
-    }
-
-    if (num_processed_frames == 0) // 这里对应greedy-search-decoder中Decode函数里   if (decoder_out.empty()) 这段内容
-    {
-        ret = inference_decoder_model(&app_ctx->decoder_context);
-        if (ret < 0)
-        {
-            printf("inference_decoder_model fail! ret=%d\n", ret);
-            return ret;
-        }
-    }
-
-    for (int i = 0; i < ENCODER_OUTPUT_T; i++)
-    {
-        float *cur_encoder_output = encoder_output + i * DECODER_DIM;
-        ret = inference_joiner_model(&app_ctx->joiner_context, cur_encoder_output, decoder_output); // RunJoiner
-        if (ret < 0)
-        {
-            printf("inference_joiner_model fail! ret=%d\n", ret);
-            return ret;
-        }
-
-        int next_token = argmax(joiner_output);
-        if (next_token != BLANK_ID && next_token != UNK_ID)
-        {
-            timestamp.push_back(frame_offset + i);
-
-            for (int j = 0; j < CONTEXT_SIZE - 1; j++)
-            {
-                decoder_input[j] = decoder_input[j + 1];
-            }
-
-            decoder_input[CONTEXT_SIZE - 1] = (int64_t)next_token;
-            std::string next_token_str = vocab[next_token].token;
-            replace_substr(next_token_str, "▁", " ");
-            recognized_text.push_back(next_token_str);
-            ret = inference_decoder_model(&app_ctx->decoder_context);
-            if (ret < 0)
-            {
-                printf("inference_decoder_model fail! ret=%d\n", ret);
-                return ret;
-            }
-        }
-        else
-        {
-            // ++result->num_trailing_blanks; // 记录（末端）连续的空白帧数，用于判断是否到达endpoint
-        }
-    }
-
-    frame_offset += ENCODER_OUTPUT_T;
-
-    return ret;
-}
 
 static int DecodePipeline(rknn_zipformer_context_t *app_ctx, float *encoder_input, float *encoder_output, int64_t *decoder_input, float *decoder_output,
                          float *joiner_output, VocabEntry *vocab, int num_processed_frames, DecoderResult& result)
@@ -472,70 +409,8 @@ static int DecodePipeline(rknn_zipformer_context_t *app_ctx, float *encoder_inpu
     return ret;
 }
 
-int inference_zipformer_model(rknn_zipformer_context_t *app_ctx, audio_buffer_t audio, VocabEntry *vocab, std::vector<std::string> &recognized_text,
-                              std::vector<float> &timestamp, float &audio_length)
-{
-    int ret;
-    recognized_text.clear();
-    timestamp.clear();
 
-    float *encoder_input = (float *)app_ctx->encoder_context.inputs[0].buf;
-    float *encoder_output = (float *)app_ctx->encoder_context.outputs[0].buf;
-    int64_t *decoder_input = (int64_t *)app_ctx->decoder_context.inputs[0].buf;
-    float *decoder_output = (float *)app_ctx->decoder_context.outputs[0].buf;
-    float *joiner_output = (float *)app_ctx->joiner_context.outputs[0].buf;
-
-    knf::FbankOptions fbank_opts;
-    fbank_opts.frame_opts.samp_freq = 16000;
-    fbank_opts.mel_opts.num_bins = 80;
-    fbank_opts.mel_opts.high_freq = -400;
-    fbank_opts.frame_opts.dither = 0;
-    fbank_opts.frame_opts.snip_edges = false;
-    knf::OnlineFbank fbank(fbank_opts);
-
-    int num_frames = 0;
-    int num_processed_frames = 0;
-    int offset = N_OFFSET;
-    int segment = N_SEGMENT;
-    float tail_pad_length = 0.0; // sec
-    fbank.AcceptWaveform(SAMPLE_RATE, audio.data, audio.num_frames);
-    num_frames = fbank.NumFramesReady();
-    int frame_offset = 0;
-
-    while ((num_frames - num_processed_frames) > 0)
-    {
-        if ((num_frames - num_processed_frames) < segment) // 这段同decode-file-c-api.c // add some tail padding那一段
-        {
-            tail_pad_length = (segment - (num_frames - num_processed_frames)) / 100.0f; // sec
-            std::vector<float> tail_paddings(int(tail_pad_length * SAMPLE_RATE));
-            fbank.AcceptWaveform(SAMPLE_RATE, tail_paddings.data(), tail_paddings.size());
-            fbank.InputFinished();
-        }
-        // 从num_processed_frames个frame开始，取segment个frame写入到encoder_input
-        ret = get_fbank_frames(&fbank, num_processed_frames, segment, encoder_input); 
-        if (ret < 0)
-        {
-            break;
-        }
-
-        ret = greedy_search(app_ctx, encoder_input, encoder_output, decoder_input, decoder_output, joiner_output, vocab, recognized_text, timestamp, num_processed_frames, frame_offset);
-        if (ret < 0)
-        {
-            printf("greedy_search fail! ret=%d\n", ret);
-            goto out;
-        }
-        num_processed_frames += offset;
-    }
-
-    audio_length = (float)audio.num_frames / audio.sample_rate + tail_pad_length;
-
-out:
-
-    return ret;
-}
-
-
-SpeechRecognizer::SpeechRecognizer(const SpeechRecognitionConfig &config): expectedSampleRate(16000), endpoint_(sherpa_ncnn::EndpointConfig())
+SherpaRknnOnlineRecognizer::SherpaRknnOnlineRecognizer(const SpeechRecognitionConfig &config): expectedSampleRate(16000), endpoint_(sherpa_ncnn::EndpointConfig())
 {
     int ret;
 
@@ -572,7 +447,7 @@ SpeechRecognizer::SpeechRecognizer(const SpeechRecognitionConfig &config): expec
 }
 
 
-SpeechRecognizer::~SpeechRecognizer()
+SherpaRknnOnlineRecognizer::~SherpaRknnOnlineRecognizer()
 {
     int ret;
 
@@ -604,13 +479,13 @@ SpeechRecognizer::~SpeechRecognizer()
     }
 }
 
-std::unique_ptr<RknnStream> SpeechRecognizer::CreateStream()
+std::unique_ptr<RknnStream> SherpaRknnOnlineRecognizer::CreateStream()
 {
     return std::make_unique<RknnStream>();
 }
 
 
-void SpeechRecognizer::DecodeStream(RknnStream* stream)
+void SherpaRknnOnlineRecognizer::DecodeStream(RknnStream* stream)
 {
     int ret;
     std::vector<std::string> recognized_text;
@@ -641,13 +516,13 @@ void SpeechRecognizer::DecodeStream(RknnStream* stream)
 }
 
 
-bool SpeechRecognizer::IsReady(RknnStream* s)
+bool SherpaRknnOnlineRecognizer::IsReady(RknnStream* s)
 {
     return s->GetNumProcessedFrames() + N_SEGMENT < s->NumFramesReady(); // 还有足够的帧数可以完成下一次推理
 }
 
 
-bool SpeechRecognizer::IsEndpoint(RknnStream* s)
+bool SherpaRknnOnlineRecognizer::IsEndpoint(RknnStream* s)
 {
     // if (!config_.enable_endpoint) return false;
     int32_t num_processed_frames = s->GetNumProcessedFrames();
@@ -662,7 +537,7 @@ bool SpeechRecognizer::IsEndpoint(RknnStream* s)
                                 frame_shift_in_seconds);
 }
 
-void SpeechRecognizer::Reset(RknnStream* s)
+void SherpaRknnOnlineRecognizer::Reset(RknnStream* s)
 {
     DecoderResult r{
         .frame_offset = 0,
@@ -692,7 +567,7 @@ void SpeechRecognizer::Reset(RknnStream* s)
     // still kept in memory
     s->Reset();
 }
-// bool SpeechRecognizer::Recognize(const std::string srcWavPath, std::string& result)
+// bool SherpaRknnOnlineRecognizer::Recognize(const std::string srcWavPath, std::string& result)
 // {
 //     bool isOk;
 //     auto ss = sherpa_onnx::ReadWave(srcWavPath, &expectedSampleRate, &isOk);
@@ -704,7 +579,7 @@ void SpeechRecognizer::Reset(RknnStream* s)
 //     return Recognize(ss, result);
 // }
 
-std::string SpeechRecognizer::GetResult(RknnStream* s)
+std::string SherpaRknnOnlineRecognizer::GetResult(RknnStream* s)
 {
     return s->GetResult().text;
 }

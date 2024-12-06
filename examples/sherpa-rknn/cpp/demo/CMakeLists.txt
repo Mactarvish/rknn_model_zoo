@@ -2,12 +2,11 @@ cmake_minimum_required(VERSION 3.10)
 project(sherpa-rknn-demo)
 
 
-set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
-
 find_package(spdlog REQUIRED)
 
 file(GLOB SRCS ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 
+set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 add_executable(${PROJECT_NAME}
     main.cc
     wave-reader.cc
@@ -44,6 +43,3 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${LIBKALDI_NATIVE_FBANK_INCLUDES}
     ${LIBTIMER_INCLUDES}
 )
-
-
-install(TARGETS ${PROJECT_NAME} DESTINATION .)

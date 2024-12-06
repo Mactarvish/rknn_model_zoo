@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "zipformer.h"
+#include "sherpa_rknn_online_recognizer.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>

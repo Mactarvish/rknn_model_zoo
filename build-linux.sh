@@ -197,15 +197,15 @@ make -j4
 make install
 
 # Check if there is a rknn model in the install directory
-suffix=".rknn"
-shopt -s nullglob
-if [ -d "$INSTALL_DIR" ]; then
-    files=("$INSTALL_DIR/model/"/*"$suffix")
-    shopt -u nullglob
+# suffix=".rknn"
+# shopt -s nullglob
+# if [ -d "$INSTALL_DIR" ]; then
+#     files=("$INSTALL_DIR/model/"/*"$suffix")
+#     shopt -u nullglob
 
-    if [ ${#files[@]} -le 0 ]; then
-        echo -e "\e[91mThe RKNN model can not be found in \"$INSTALL_DIR/model\", please check!\e[0m"
-    fi
-else
-    echo -e "\e[91mInstall directory \"$INSTALL_DIR\" does not exist, please check!\e[0m"
-fi
+#     if [ ${#files[@]} -le 0 ]; then
+#         echo -e "\e[91mThe RKNN model can not be found in \"$INSTALL_DIR/model\", please check!\e[0m"
+#     fi
+# else
+#     echo -e "\e[91mInstall directory \"$INSTALL_DIR\" does not exist, please check!\e[0m"
+# fi

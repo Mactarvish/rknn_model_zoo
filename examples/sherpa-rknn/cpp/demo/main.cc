@@ -23,7 +23,7 @@
 #include <iostream>
 #include <vector>
 
-#include "zipformer.h"
+#include "sherpa_rknn_online_recognizer.h"
 #include "wave-reader.h"
 #include "alsa/alsa-play.h"
 #include "alsa/alsa.h"
@@ -67,7 +67,7 @@ int main(int argc, char **argv)
     // Assume the wave header occupies 44 bytes. 跳过元信息
     fseek(fp, 44, SEEK_SET);
 
-    SpeechRecognizer recognizer(SpeechRecognitionConfig{
+    SherpaRknnOnlineRecognizer recognizer(SpeechRecognitionConfig{
         .expectedSampleRate = SAMPLE_RATE,
         .modelPath = "",
         .vocabPath = VOCAB_PATH,
