@@ -4,7 +4,7 @@ else()
     set(d "")
 endif()
 
-if (TARGET_SOC NOT STREQUAL "rk3588")
+if (NOT (TARGET_SOC STREQUAL "rk3588"))
     message(FATAL_ERROR "sherpa_rknn : Unsupported soc")
 endif()
 

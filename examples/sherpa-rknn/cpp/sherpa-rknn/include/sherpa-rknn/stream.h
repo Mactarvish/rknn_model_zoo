@@ -34,11 +34,11 @@ struct DecoderResult {
 //   Hypotheses hyps;
 };
 
-class RknnStream
+class SherpaRknnOnlineStream
 {
 public:
-    explicit RknnStream();
-    virtual ~RknnStream();
+    explicit SherpaRknnOnlineStream();
+    virtual ~SherpaRknnOnlineStream();
 
     void AcceptWaveform(float sampling_rate, const float *waveform, int32_t n);
     DecoderResult& GetResult();

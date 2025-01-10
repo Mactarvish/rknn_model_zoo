@@ -1,7 +1,7 @@
-#include "stream.h"
+#include "sherpa-rknn/stream.h"
 
 
-RknnStream::RknnStream()
+SherpaRknnOnlineStream::SherpaRknnOnlineStream()
 {
     knf::FbankOptions fbank_opts;
     fbank_opts.frame_opts.samp_freq = 16000;
@@ -14,19 +14,19 @@ RknnStream::RknnStream()
 }
 
 
-RknnStream::~RknnStream()
+SherpaRknnOnlineStream::~SherpaRknnOnlineStream()
 {
 
 }
 
 
-void RknnStream::AcceptWaveform(float sampling_rate, const float *waveform, int32_t n)
+void SherpaRknnOnlineStream::AcceptWaveform(float sampling_rate, const float *waveform, int32_t n)
 {
     return fbank->AcceptWaveform(sampling_rate, waveform, n);
 }
 
 
-int RknnStream::GetFbankFrames(int frame_index, int segment, float* frames)
+int SherpaRknnOnlineStream::GetFbankFrames(int frame_index, int segment, float* frames)
 {
     if (frame_index + segment > fbank->NumFramesReady())
     {
@@ -42,40 +42,40 @@ int RknnStream::GetFbankFrames(int frame_index, int segment, float* frames)
     return 0;
 }
 
-size_t RknnStream::NumFramesReady()
+size_t SherpaRknnOnlineStream::NumFramesReady()
 {
     return fbank->NumFramesReady() - start_frame_index_;
 }
 
-int32_t& RknnStream::GetNumProcessedFrames()
+int32_t& SherpaRknnOnlineStream::GetNumProcessedFrames()
 {
     return num_processed_frames_;
 }
 
-void RknnStream::SetResult(const DecoderResult& r)
+void SherpaRknnOnlineStream::SetResult(const DecoderResult& r)
 {
     int32_t offset = r.frame_offset;
     result = r;
     result.frame_offset = offset;
 }
 
-DecoderResult& RknnStream::GetResult()
+DecoderResult& SherpaRknnOnlineStream::GetResult()
 {
     return result;
 }
 
-void RknnStream::Finalize()
+void SherpaRknnOnlineStream::Finalize()
 {
     
 }
 
 
-void RknnStream::InputFinished()
+void SherpaRknnOnlineStream::InputFinished()
 {
     return fbank->InputFinished();
 }
 
-void RknnStream::Reset()
+void SherpaRknnOnlineStream::Reset()
 {
     start_frame_index_ += num_processed_frames_;
     num_processed_frames_ = 0;

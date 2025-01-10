@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 // #include "sherpa-ncnn/csrc/endpoint.h"
-#include "endpoint.h"
+#include "sherpa-rknn/endpoint.h"
 #include <sstream>
 #include <string>
 

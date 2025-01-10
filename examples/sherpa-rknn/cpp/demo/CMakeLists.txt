@@ -4,7 +4,6 @@ project(sherpa-rknn-demo)
 
 find_package(spdlog REQUIRED)
 
-file(GLOB SRCS ${CMAKE_CURRENT_SOURCE_DIR}/*.cc)
 
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 add_executable(${PROJECT_NAME}
@@ -16,8 +15,6 @@ add_executable(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
     fileutils
-    ${LIBRKNNRT}
-    ${LIBKALDI_NATIVE_FBANK}
     asound
     spdlog::spdlog_header_only
     ${CMAKE_BINARY_DIR}/sherpa-rknn/libsherpa-rknn.so
@@ -41,5 +38,4 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${LIBRKNNRT_INCLUDES}
     ${LIBKALDI_NATIVE_FBANK_INCLUDES}
-    ${LIBTIMER_INCLUDES}
 )

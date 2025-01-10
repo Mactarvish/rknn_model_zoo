@@ -3,8 +3,6 @@
 
 // #define TIMING_DISABLED // if you don't need to print the time used, uncomment this line of code
 
-#include "rknn_api.h"
-#include "easy_timer.h"
 #include "kaldi-native-fbank/csrc/online-feature.h"
 
 #define VOCAB_NUM 6257

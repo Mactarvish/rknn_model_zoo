@@ -1,23 +1,9 @@
-// Copyright (c) 2024 by Rockchip Electronics Co., Ltd. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "sherpa_rknn_online_recognizer.h"
-#include "process.h"
+#include "sherpa-rknn/sherpa_rknn_online_recognizer.h"
+#include "sherpa-rknn/process.h"
 
 
 static void dump_tensor_attr(rknn_tensor_attr *attr)
@@ -410,7 +396,7 @@ static int DecodePipeline(rknn_zipformer_context_t *app_ctx, float *encoder_inpu
 }
 
 
-SherpaRknnOnlineRecognizer::SherpaRknnOnlineRecognizer(const SpeechRecognitionConfig &config): expectedSampleRate(16000), endpoint_(sherpa_ncnn::EndpointConfig())
+SherpaRknnOnlineRecognizer::SherpaRknnOnlineRecognizer(const SherpaRknnOnlineRecognizerConfig &config): expectedSampleRate(16000), endpoint_(sherpa_ncnn::EndpointConfig())
 {
     int ret;
 
@@ -479,13 +465,13 @@ SherpaRknnOnlineRecognizer::~SherpaRknnOnlineRecognizer()
     }
 }
 
-std::unique_ptr<RknnStream> SherpaRknnOnlineRecognizer::CreateStream()
+std::unique_ptr<SherpaRknnOnlineStream> SherpaRknnOnlineRecognizer::CreateStream()
 {
-    return std::make_unique<RknnStream>();
+    return std::make_unique<SherpaRknnOnlineStream>();
 }
 
 
-void SherpaRknnOnlineRecognizer::DecodeStream(RknnStream* stream)
+void SherpaRknnOnlineRecognizer::DecodeStream(SherpaRknnOnlineStream* stream)
 {
     int ret;
     std::vector<std::string> recognized_text;
@@ -516,13 +502,13 @@ void SherpaRknnOnlineRecognizer::DecodeStream(RknnStream* stream)
 }
 
 
-bool SherpaRknnOnlineRecognizer::IsReady(RknnStream* s)
+bool SherpaRknnOnlineRecognizer::IsReady(SherpaRknnOnlineStream* s)
 {
     return s->GetNumProcessedFrames() + N_SEGMENT < s->NumFramesReady(); // 还有足够的帧数可以完成下一次推理
 }
 
 
-bool SherpaRknnOnlineRecognizer::IsEndpoint(RknnStream* s)
+bool SherpaRknnOnlineRecognizer::IsEndpoint(SherpaRknnOnlineStream* s)
 {
     // if (!config_.enable_endpoint) return false;
     int32_t num_processed_frames = s->GetNumProcessedFrames();
@@ -537,7 +523,7 @@ bool SherpaRknnOnlineRecognizer::IsEndpoint(RknnStream* s)
                                 frame_shift_in_seconds);
 }
 
-void SherpaRknnOnlineRecognizer::Reset(RknnStream* s)
+void SherpaRknnOnlineRecognizer::Reset(SherpaRknnOnlineStream* s)
 {
     DecoderResult r{
         .frame_offset = 0,
@@ -579,7 +565,7 @@ void SherpaRknnOnlineRecognizer::Reset(RknnStream* s)
 //     return Recognize(ss, result);
 // }
 
-std::string SherpaRknnOnlineRecognizer::GetResult(RknnStream* s)
+std::string SherpaRknnOnlineRecognizer::GetResult(SherpaRknnOnlineStream* s)
 {
     return s->GetResult().text;
 }

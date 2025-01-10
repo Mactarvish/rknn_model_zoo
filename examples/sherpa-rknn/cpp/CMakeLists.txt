@@ -10,6 +10,11 @@ if (ENABLE_ASAN)
 	set (CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
 endif ()
 
+# option(USE_SHERPA_RKNN_RECOGNITION "Use sherpa-rknn" ON)
+add_definitions(-DUSE_SHERPA_RKNN_RECOGNITION)
+
+
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/ 3rdparty.out)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/ utils.out)
 
