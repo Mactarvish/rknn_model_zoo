@@ -1,6 +1,6 @@
 [简体中文](README_CN.md) | [English](README.md)
 
-# 支持RKNN3588板端的zipformer ASR模型的在线流式推理
+# 支持RK3588板端的zipformer ASR模型的在线流式推理
 
 # RKNN Model Zoo
 
